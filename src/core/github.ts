@@ -19,6 +19,8 @@ export class GithubError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** Сообщение GitHub как есть — по нему отличаем конфликт ветки от прочих отказов. */
+    readonly detail = "",
   ) {
     super(message);
   }
@@ -47,7 +49,7 @@ async function request(ref: RepoRef, path: string, init: RequestInit = {}, accep
     } catch {
       /* тело не JSON */
     }
-    throw new GithubError(res.status, explain(res.status, detail));
+    throw new GithubError(res.status, explain(res.status, detail), detail);
   }
   return res;
 }
@@ -108,25 +110,40 @@ export async function createBinaryBlob(ref: RepoRef, data: Blob): Promise<string
   return ((await post(ref, "/git/blobs", { content: await blobToBase64(data), encoding: "base64" })) as { sha: string }).sha;
 }
 
-/** Один коммит поверх `head`, который меняет только перечисленные файлы. Возвращает новую голову ветки. */
+const COMMIT_ATTEMPTS = 5;
+
+const isBranchMoved = (e: unknown): e is GithubError =>
+  e instanceof GithubError && e.status === 422 && /fast.?forward/i.test(e.detail);
+
+/**
+ * Один коммит поверх `head`, который меняет только перечисленные файлы. Возвращает новую голову ветки.
+ * Если ветку тем временем сдвинули (второе устройство, воркер на ПК), коммит пересобирается поверх свежей
+ * головы: загруженные файлы (blob) остаются валидными, повторять их загрузку не нужно.
+ */
 export async function commitChanges(
   ref: RepoRef,
   head: { commit: string; tree: string },
   entries: TreeEntry[],
   message: string,
 ): Promise<{ commit: string; tree: string }> {
-  const tree = ((await post(ref, "/git/trees", { base_tree: head.tree, tree: entries })) as { sha: string }).sha;
-  const commit = ((await post(ref, "/git/commits", { message, tree, parents: [head.commit] })) as { sha: string }).sha;
-  try {
-    await request(ref, `/git/refs/heads/${encodeURI(ref.branch)}`, {
-      method: "PATCH",
-      body: JSON.stringify({ sha: commit, force: false }),
-    });
-  } catch (e) {
-    if (e instanceof GithubError && e.status === 422) throw new ConflictError("Ветка изменилась во время отправки");
-    throw e;
+  let base = head;
+  for (let attempt = 1; ; attempt++) {
+    const tree = ((await post(ref, "/git/trees", { base_tree: base.tree, tree: entries })) as { sha: string }).sha;
+    const commit = ((await post(ref, "/git/commits", { message, tree, parents: [base.commit] })) as { sha: string }).sha;
+    try {
+      await request(ref, `/git/refs/heads/${encodeURI(ref.branch)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ sha: commit, force: false }),
+      });
+      return { commit, tree };
+    } catch (e) {
+      if (!isBranchMoved(e)) throw e;
+      if (attempt >= COMMIT_ATTEMPTS) throw new ConflictError("Ветка всё время меняется — попробуй синхронизировать ещё раз");
+      // Небольшая пауза с разбросом, чтобы два устройства не толкались в одну и ту же долю секунды.
+      await new Promise((r) => setTimeout(r, 300 * attempt + Math.random() * 400));
+      base = await getHead(ref);
+    }
   }
-  return { commit, tree };
 }
 
 /** Проверка из настроек: репозиторий виден, ветка есть, запись разрешена. */
