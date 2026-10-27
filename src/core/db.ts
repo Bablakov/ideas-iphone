@@ -35,7 +35,7 @@ interface LegacyIdea {
 
 /** Открывает базу один раз на всё приложение. */
 export function db(): Promise<IdeasDb> {
-  opened ??= openDB<Schema>("ideas", 2, {
+  opened ??= openDB<Schema>("ideas", 3, {
     async upgrade(d, oldVersion, _newVersion, tx) {
       if (oldVersion < 1) {
         d.createObjectStore("ideas", { keyPath: "id" });
@@ -50,6 +50,7 @@ export function db(): Promise<IdeasDb> {
           const next: Idea = {
             id: raw.id,
             created: raw.created,
+            updated: raw.created,
             text: raw.text,
             sourceUrl: raw.sourceUrl,
             status: raw.status,
@@ -65,6 +66,13 @@ export function db(): Promise<IdeasDb> {
             await media.delete(raw.id);
           }
           await ideas.put(next);
+        }
+      }
+      if (oldVersion < 3) {
+        // v3: у каждой карточки появилось время правки — по нему синхронизация выбирает свежую версию.
+        const ideas = tx.objectStore("ideas");
+        for (const idea of await ideas.getAll()) {
+          if (typeof idea.updated !== "number") await ideas.put({ ...idea, updated: idea.created });
         }
       }
     },

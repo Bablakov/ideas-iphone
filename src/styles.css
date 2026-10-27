@@ -507,3 +507,54 @@ input:focus {
   font-size: 14px;
   z-index: 20;
 }
+
+/* ---------- настройки ---------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--dim);
+}
+.field input {
+  color: var(--text);
+  font-size: 16px;
+}
+.notice {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.notice.ok {
+  background: rgba(76, 208, 138, 0.14);
+  color: var(--ok);
+}
+.notice.bad {
+  background: rgba(255, 95, 95, 0.14);
+  color: var(--danger);
+}
+.stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 15px;
+}
+.stat span {
+  color: var(--dim);
+}
+.hint-small.left {
+  text-align: left;
+  margin-top: 0;
+}
+.steps {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--dim);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.steps li + li {
+  margin-top: 6px;
+}

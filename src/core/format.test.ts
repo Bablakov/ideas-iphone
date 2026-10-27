@@ -5,7 +5,7 @@ import type { Idea } from "./types";
 const at = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).getTime();
 
 function idea(id: string, created: number, patch: Partial<Idea> = {}): Idea {
-  return { id, created, text: "", sourceUrl: "", status: "new", synced: false, ...patch };
+  return { id, created, updated: created, text: "", sourceUrl: "", status: "new", synced: false, ...patch };
 }
 
 describe("dayLabel", () => {

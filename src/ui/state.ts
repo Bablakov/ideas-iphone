@@ -1,6 +1,6 @@
 import { signal } from "@preact/signals";
 
-export type Tab = "new" | "history";
+export type Tab = "new" | "history" | "archive" | "settings";
 
 export const tab = signal<Tab>("new");
 
