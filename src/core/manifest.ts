@@ -112,3 +112,32 @@ export function planFor(local: Idea | undefined, remote: ItemJson | undefined): 
   if (remote.updated === local.updated) return "adopt";
   return "push";
 }
+
+/**
+ * merge — обычная синхронизация (побеждает более свежая правка);
+ * remote — версия из репозитория главная: перезаписывает локальные правки существующих карточек;
+ * local — версия с этого устройства главная: перезаписывает версии в репозитории.
+ * Карточки, которых нет с другой стороны, в принудительных режимах не удаляются.
+ */
+export type SyncMode = "merge" | "remote" | "local";
+
+/**
+ * План для принудительных режимов. `remote` — свежий item.json (нужен только в режиме remote),
+ * `remoteSha` — sha item.json в репозитории, если он там есть.
+ */
+export function planForced(
+  mode: Exclude<SyncMode, "merge">,
+  local: Idea | undefined,
+  remote: ItemJson | undefined,
+  remoteSha: string | undefined,
+): Plan {
+  if (mode === "remote") {
+    if (!remote) return local && !local.synced ? "push" : "noop";
+    if (remote.deleted) return local ? "purge" : "skip";
+    return "pull";
+  }
+  if (!local) return "noop";
+  // Версия в репозитории уже ровно наша — переотправлять незачем.
+  if (local.synced && remoteSha !== undefined && local.remoteSha === remoteSha) return "noop";
+  return "push";
+}

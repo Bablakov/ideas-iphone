@@ -1,9 +1,10 @@
-import { useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { dayKey, dayLabel, formatTime } from "../core/format";
 import { checkAccess } from "../core/github";
 import { config, repoRef, saveConfig, type SyncConfig } from "../core/settings";
 import { ideas } from "../core/store";
 import { syncNow, syncState } from "../core/sync";
+import type { SyncMode } from "../core/manifest";
 import { toast } from "./state";
 
 function lastSyncText(ts: number): string {
@@ -17,6 +18,9 @@ export function SettingsScreen() {
   const [access, setAccess] = useState<{ ok: boolean; message: string }>();
   const [showToken, setShowToken] = useState(false);
   const [confirmWipe, setConfirmWipe] = useState(false);
+  const [armed, setArmed] = useState<Exclude<SyncMode, "merge"> | null>(null);
+  const armTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(armTimer.current), []);
 
   const pending = ideas.value.filter((i) => !i.synced).length;
   const configured = repoRef(c) !== undefined;
@@ -35,6 +39,21 @@ export function SettingsScreen() {
     setChecking(true);
     setAccess(await checkAccess(ref));
     setChecking(false);
+  }
+
+  /** Опасные режимы с подтверждением вторым нажатием: первое «взводит» кнопку на 4 секунды. */
+  async function force(mode: Exclude<SyncMode, "merge">) {
+    if (armed !== mode) {
+      setArmed(mode);
+      clearTimeout(armTimer.current);
+      armTimer.current = setTimeout(() => setArmed(null), 4000);
+      return;
+    }
+    clearTimeout(armTimer.current);
+    setArmed(null);
+    await syncNow(mode);
+    const r = syncState.value;
+    toast(r.error || r.message);
   }
 
   function wipeToken() {
@@ -102,6 +121,22 @@ export function SettingsScreen() {
 
         {access && <div class={`notice ${access.ok ? "ok" : "bad"}`}>{access.message}</div>}
         {s.error && <div class="notice bad">{s.error}</div>}
+      </section>
+
+      <section class="block">
+        <h2>Если версии разошлись</h2>
+        <div class="hint-small left">
+          Обычная синхронизация сама берёт более свежую правку каждой карточки. Если нужно решить вручную, кто
+          главный:
+        </div>
+        <button class={`secondary${armed === "remote" ? " armed-warn" : ""}`} onClick={() => void force("remote")} disabled={!configured || s.running}>
+          {armed === "remote" ? "Точно? Мои правки заменятся" : "Взять версию с GitHub"}
+        </button>
+        <div class="hint-small left">Твои правки существующих карточек на этом устройстве заменятся версиями из репозитория. Карточки, которых там нет, останутся и уйдут туда.</div>
+        <button class={`secondary${armed === "local" ? " armed-warn" : ""}`} onClick={() => void force("local")} disabled={!configured || s.running}>
+          {armed === "local" ? "Точно? Версии на GitHub заменятся" : "Отправить мою версию на GitHub"}
+        </button>
+        <div class="hint-small left">Версии карточек в репозитории заменятся тем, что на этом устройстве. Карточки, которых нет на устройстве, на GitHub не тронутся.</div>
       </section>
 
       <section class="block">

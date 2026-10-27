@@ -163,3 +163,18 @@ export async function markSynced(id: string, remoteSha: string, updatedSnapshot:
   await d.put("ideas", next);
   showInList(next);
 }
+
+/**
+ * Делает версию на этом устройстве «самой свежей» (новое время правки) и помечает её неотправленной.
+ * Нужно для принудительной отправки: иначе другое устройство со своим более поздним `updated`
+ * при следующей синхронизации вернуло бы свою версию обратно.
+ */
+export async function touchIdea(id: string): Promise<Idea | undefined> {
+  const d = await db();
+  const current = await d.get("ideas", id);
+  if (!current) return undefined;
+  const next: Idea = { ...current, updated: Math.max(Date.now(), current.updated + 1), synced: false };
+  await d.put("ideas", next);
+  showInList(next);
+  return next;
+}

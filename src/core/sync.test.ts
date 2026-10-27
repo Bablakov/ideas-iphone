@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { joinParts, partName, sha256Hex, splitBlob } from "./chunks";
 import { indexTree } from "./sync";
-import { needsRemoteFetch, parseItemJson, planFor, toItemJson, type ItemJson } from "./manifest";
+import { needsRemoteFetch, parseItemJson, planFor, planForced, toItemJson, type ItemJson } from "./manifest";
 import { parseRepo } from "./settings";
 import type { Idea } from "./types";
 
@@ -35,6 +35,29 @@ describe("planFor", () => {
   });
   it("локальное надгробие новее версии в репозитории уходит наверх", () => {
     expect(planFor(idea({ updated: 300, deleted: true }), remote({ updated: 200 }))).toBe("push");
+  });
+});
+
+describe("planForced", () => {
+  it("режим remote: версия из репозитория побеждает, даже если локальная новее", () => {
+    expect(planForced("remote", idea({ updated: 900 }), remote({ updated: 100 }), "s")).toBe("pull");
+    expect(planForced("remote", undefined, remote(), "s")).toBe("pull");
+  });
+  it("режим remote: удаление в репозитории стирает локальную карточку", () => {
+    expect(planForced("remote", idea(), remote({ deleted: true }), "s")).toBe("purge");
+    expect(planForced("remote", undefined, remote({ deleted: true }), "s")).toBe("skip");
+  });
+  it("режим remote: карточки только на устройстве не трогаем, новые отправятся", () => {
+    expect(planForced("remote", idea({ synced: false }), undefined, undefined)).toBe("push");
+    expect(planForced("remote", idea({ synced: true, remoteSha: "s" }), undefined, "s")).toBe("noop");
+  });
+  it("режим local: локальная версия отправляется, даже если в репозитории новее", () => {
+    expect(planForced("local", idea({ updated: 100, synced: true, remoteSha: "old" }), undefined, "new")).toBe("push");
+    expect(planForced("local", idea({ synced: false }), undefined, undefined)).toBe("push");
+  });
+  it("режим local: уже совпавшее не переотправляем, а чужие карточки не трогаем", () => {
+    expect(planForced("local", idea({ synced: true, remoteSha: "s" }), undefined, "s")).toBe("noop");
+    expect(planForced("local", undefined, undefined, "s")).toBe("noop");
   });
 });
 

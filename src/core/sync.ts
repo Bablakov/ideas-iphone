@@ -5,10 +5,10 @@ import {
   type RepoRef, type TreeEntry,
 } from "./github";
 import {
-  needsRemoteFetch, parseItemJson, planFor, toItemJson, type ItemJson, type RemoteMedia,
+  needsRemoteFetch, parseItemJson, planFor, planForced, toItemJson, type ItemJson, type Plan, type RemoteMedia, type SyncMode,
 } from "./manifest";
 import { repoRef } from "./settings";
-import { allRecords, getMedia, markSynced, purgeRecord, putRecord } from "./store";
+import { allRecords, getMedia, markSynced, purgeRecord, putRecord, touchIdea } from "./store";
 import type { Idea, MediaKind } from "./types";
 
 const LAST_KEY = "ideas.sync.last";
@@ -156,7 +156,7 @@ interface Counters {
   pulled: number;
 }
 
-async function runOnce(ref: RepoRef): Promise<Counters> {
+async function runOnce(ref: RepoRef, mode: SyncMode): Promise<Counters> {
   let head = await getHead(ref);
   const remote = indexTree(await getTree(ref, head.tree));
   const locals = new Map((await allRecords()).map((i) => [i.id, i]));
@@ -174,16 +174,24 @@ async function runOnce(ref: RepoRef): Promise<Counters> {
       continue;
     }
 
+    // В режиме «версия из репозитория главная» читаем item.json и тогда, когда sha совпал, но на устройстве
+    // есть несохранённые правки; полностью совпавшие карточки пропускаем.
+    const identical = local?.synced === true && local.remoteSha === dir?.itemSha;
     let item: ItemJson | undefined;
-    if (dir?.itemSha && needsRemoteFetch(local, dir.itemSha)) {
+    if (dir?.itemSha && ((mode === "remote" && !identical) || (mode === "merge" && needsRemoteFetch(local, dir.itemSha)))) {
       item = parseItemJson(await getBlobText(ref, dir.itemSha));
     }
 
-    switch (planFor(local, item)) {
-      case "push":
-        head = await push(ref, head, local!, dir);
+    const plan: Plan = mode === "merge" ? planFor(local, item) : planForced(mode, local, item, dir?.itemSha);
+
+    switch (plan) {
+      case "push": {
+        // Принудительная отправка: версия должна стать самой свежей, иначе другое устройство её перебьёт.
+        const toSend = mode === "local" ? ((await touchIdea(id)) ?? local!) : local!;
+        head = await push(ref, head, toSend, dir);
         counters.pushed++;
         break;
+      }
       case "pull":
         await pull(ref, item!, dir!.itemSha!, dir!, local);
         counters.pulled++;
@@ -206,7 +214,7 @@ async function runOnce(ref: RepoRef): Promise<Counters> {
 let running = false;
 
 /** Полная синхронизация. Безопасно вызывать часто: параллельные вызовы игнорируются. */
-export async function syncNow(): Promise<void> {
+export async function syncNow(mode: SyncMode = "merge"): Promise<void> {
   const ref = repoRef();
   if (!ref || running) return;
   if (typeof navigator !== "undefined" && navigator.onLine === false) return;
@@ -215,11 +223,11 @@ export async function syncNow(): Promise<void> {
   try {
     let counters: Counters;
     try {
-      counters = await runOnce(ref);
+      counters = await runOnce(ref, mode);
     } catch (e) {
       // Пока мы отправляли, ветку сдвинули (например, воркер на ПК) — один повтор с актуальной веткой.
       if (!(e instanceof ConflictError)) throw e;
-      counters = await runOnce(ref);
+      counters = await runOnce(ref, mode);
     }
     const last = Date.now();
     safeSet(LAST_KEY, String(last));
