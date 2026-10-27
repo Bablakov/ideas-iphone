@@ -135,28 +135,46 @@ input:focus {
   color: var(--accent);
 }
 
-/* ---------- экран записи ---------- */
+/* ---------- новая карточка ---------- */
 
 .screen {
-  padding: 8px 18px 24px;
+  padding: 4px 18px 28px;
 }
 
-.rec-zone {
+.block {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  margin-bottom: 12px;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+}
+.block h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rec-row {
+  display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 18px 0 22px;
+  gap: 16px;
 }
 .rec-btn {
-  width: 132px;
-  height: 132px;
+  flex: none;
+  width: 76px;
+  height: 76px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   background: var(--accent);
   color: var(--accent-ink);
-  box-shadow: 0 8px 28px rgba(255, 194, 51, 0.25);
+  box-shadow: 0 6px 20px rgba(255, 194, 51, 0.22);
   transition: transform 0.12s;
 }
 .rec-btn:active {
@@ -173,41 +191,107 @@ input:focus {
     box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.5);
   }
   50% {
-    box-shadow: 0 0 0 22px rgba(255, 77, 77, 0);
+    box-shadow: 0 0 0 16px rgba(255, 77, 77, 0);
   }
 }
 .rec-hint {
-  height: 28px;
   color: var(--dim);
 }
 .rec-time {
   color: var(--rec);
-  font-size: 22px;
+  font-size: 24px;
   font-variant-numeric: tabular-nums;
 }
 
-.video-btn {
-  display: inline-flex;
+.pick-btn {
+  display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  border-radius: 999px;
-  background: var(--card);
-  border: 1px solid var(--line);
+  justify-content: center;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--bg2);
+  border: 1px dashed var(--line);
   cursor: pointer;
 }
-.video-btn.disabled {
+.pick-btn.disabled {
   opacity: 0.4;
   pointer-events: none;
 }
-.video-btn input {
+.pick-btn input {
   display: none;
 }
 
-.note {
+/* Вложение (аудио/видео) в черновике или карточке. min-width: 0 не даёт широкому ролику растянуть страницу. */
+.attached {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.attached-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--dim);
+  font-size: 14px;
+}
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg2);
+  color: var(--text);
+}
+
+.media-audio {
+  display: block;
+  width: 100%;
+  flex: none;
+}
+/* Вертикальное видео не должно занимать весь экран: ограничиваем высоту и вписываем кадр целиком. */
+.media-video {
+  display: block;
+  width: 100%;
+  max-height: 38vh;
+  flex: none;
+  object-fit: contain;
+  background: #000;
+  border-radius: 12px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+.check input {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.save-bar {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin-top: 4px;
+}
+.hint-small {
+  margin-top: 10px;
+  color: var(--dim);
+  font-size: 13px;
+  text-align: center;
+}
+.center {
+  display: block;
+  margin: 18px auto 0;
+  text-align: center;
 }
 
 .primary {
@@ -255,22 +339,24 @@ input:focus {
   font-weight: 600;
 }
 
-.day-pick {
+.range {
   display: flex;
   align-items: center;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   color: var(--dim);
   font-size: 14px;
   padding-bottom: 6px;
 }
-.day-pick label {
+.range label {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
-.day-pick input {
+.range input {
   width: auto;
-  padding: 6px 10px;
+  padding: 6px 8px;
+  min-width: 0;
 }
 
 .day {
@@ -324,6 +410,9 @@ input:focus {
 .row-done {
   color: var(--ok);
 }
+.row-arch {
+  color: var(--dim);
+}
 
 .empty {
   text-align: center;
@@ -363,11 +452,6 @@ input:focus {
   color: var(--dim);
   font-size: 13px;
 }
-.sheet audio,
-.sheet video {
-  width: 100%;
-  border-radius: 12px;
-}
 .link-row {
   display: flex;
   align-items: center;
@@ -377,6 +461,17 @@ input:focus {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 16px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  text-align: center;
 }
 .danger {
   display: flex;

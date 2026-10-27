@@ -1,28 +1,33 @@
 import { useState } from "preact/hooks";
 import {
-  applyFilter, formatDuration, formatTime, groupByDay, ideaTitle, type Filter,
+  applyFilter, dayKey, formatDuration, formatTime, groupByDay, ideaTitle, type Filter,
 } from "../core/format";
 import { ideas } from "../core/store";
 import type { Idea } from "../core/types";
 import { Icon, type IconName } from "./Icon";
 import { openId } from "./state";
 
-const KIND_ICON: Record<Idea["kind"], IconName> = { audio: "mic", video: "video", text: "note" };
-
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "Все" },
   { id: "new", label: "Необработанные" },
   { id: "processed", label: "Обработанные" },
+  { id: "archived", label: "Архив" },
 ];
+
+/** Главная иконка строки — самое «весомое» вложение. */
+function mainIcon(i: Idea): IconName {
+  return i.video ? "video" : i.audio ? "mic" : "note";
+}
 
 function Row({ idea }: { idea: Idea }) {
   const meta = [formatTime(idea.created)];
-  if (idea.kind !== "text" && idea.duration > 0) meta.push(formatDuration(idea.duration));
+  if (idea.audio) meta.push(`аудио ${formatDuration(idea.audio.duration)}`);
+  if (idea.video) meta.push("видео");
   if (idea.sourceUrl) meta.push("ссылка");
   return (
     <button class="row" onClick={() => (openId.value = idea.id)}>
       <span class={`row-icon ${idea.status}`}>
-        <Icon name={KIND_ICON[idea.kind]} size={20} />
+        <Icon name={mainIcon(idea)} size={20} />
       </span>
       <span class="row-main">
         <span class="row-title">{ideaTitle(idea)}</span>
@@ -33,14 +38,23 @@ function Row({ idea }: { idea: Idea }) {
           <Icon name="check" size={18} />
         </span>
       )}
+      {idea.status === "archived" && (
+        <span class="row-arch">
+          <Icon name="archive" size={18} />
+        </span>
+      )}
     </button>
   );
 }
 
 export function HistoryScreen() {
   const [filter, setFilter] = useState<Filter>("all");
-  const [day, setDay] = useState("");
-  const groups = groupByDay(applyFilter(ideas.value, filter, day));
+  // По умолчанию показываем сегодняшний день; «Все дни» снимает ограничение.
+  const [from, setFrom] = useState(() => dayKey(Date.now()));
+  const [to, setTo] = useState(() => dayKey(Date.now()));
+  const groups = groupByDay(applyFilter(ideas.value, filter, from, to));
+  const anyRange = from !== "" || to !== "";
+  const total = ideas.value.length;
 
   return (
     <div class="screen history">
@@ -51,21 +65,41 @@ export function HistoryScreen() {
           </button>
         ))}
       </div>
-      <div class="day-pick">
+
+      <div class="range">
         <label>
-          День
-          <input type="date" value={day} onInput={(e) => setDay((e.currentTarget as HTMLInputElement).value)} />
+          С
+          <input type="date" value={from} onInput={(e) => setFrom((e.currentTarget as HTMLInputElement).value)} />
         </label>
-        {day && (
-          <button class="link" onClick={() => setDay("")}>
-            Сбросить
-          </button>
-        )}
+        <label>
+          по
+          <input type="date" value={to} onInput={(e) => setTo((e.currentTarget as HTMLInputElement).value)} />
+        </label>
+        <button
+          class="link"
+          onClick={() => {
+            if (anyRange) {
+              setFrom("");
+              setTo("");
+            } else {
+              setFrom(dayKey(Date.now()));
+              setTo(dayKey(Date.now()));
+            }
+          }}
+        >
+          {anyRange ? "Все дни" : "Сегодня"}
+        </button>
       </div>
 
       <div class="list">
         {groups.length === 0 && (
-          <div class="empty">{ideas.value.length === 0 ? "Пока пусто — запиши первую идею" : "Ничего не найдено"}</div>
+          <div class="empty">
+            {total === 0
+              ? "Пока пусто — создай первую карточку"
+              : anyRange
+                ? "За выбранные дни ничего нет. Нажми «Все дни», чтобы увидеть остальное."
+                : "Ничего не найдено"}
+          </div>
         )}
         {groups.map((g) => (
           <section>

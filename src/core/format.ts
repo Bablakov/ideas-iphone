@@ -1,6 +1,7 @@
 import type { Idea } from "./types";
 
-export type Filter = "all" | "new" | "processed";
+/** all — всё, кроме архива; остальные — ровно один статус. */
+export type Filter = "all" | "new" | "processed" | "archived";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -59,16 +60,25 @@ export function groupByDay(list: readonly Idea[], now: number = Date.now()): Day
   return groups;
 }
 
-/** Фильтр по статусу и (необязательно) по конкретному дню «YYYY-MM-DD». */
-export function applyFilter(list: readonly Idea[], filter: Filter, day: string = ""): Idea[] {
-  return list.filter((i) => (filter === "all" || i.status === filter) && (!day || dayKey(i.created) === day));
+/**
+ * Фильтр по статусу и по диапазону дней «YYYY-MM-DD» (границы включительно, пустая — без ограничения).
+ * Если границы перепутаны местами, они меняются сами.
+ */
+export function applyFilter(list: readonly Idea[], filter: Filter, from: string = "", to: string = ""): Idea[] {
+  const [lo, hi] = from && to && from > to ? [to, from] : [from, to];
+  return list.filter((i) => {
+    if (filter === "all" ? i.status === "archived" : i.status !== filter) return false;
+    const day = dayKey(i.created);
+    return (!lo || day >= lo) && (!hi || day <= hi);
+  });
 }
 
-/** Заголовок строки списка: первая строка текста либо тип записи. */
+/** Заголовок строки списка: первая строка текста либо то, что вложено. */
 export function ideaTitle(i: Idea): string {
   const first = i.text.trim().split("\n")[0];
   if (first) return first;
-  if (i.kind === "audio") return `Голосовая заметка ${formatDuration(i.duration)}`;
-  if (i.kind === "video") return "Видео";
-  return "Пустая заметка";
+  if (i.audio) return `Голос ${formatDuration(i.audio.duration)}`;
+  if (i.video) return "Видео";
+  if (i.sourceUrl) return i.sourceUrl;
+  return "Пустая карточка";
 }

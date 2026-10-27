@@ -2,7 +2,7 @@ import { ideas, ready } from "../core/store";
 import { HistoryScreen } from "./HistoryScreen";
 import { Icon } from "./Icon";
 import { IdeaSheet } from "./IdeaSheet";
-import { RecordScreen } from "./RecordScreen";
+import { NewCardScreen } from "./NewCardScreen";
 import { tab, toastMsg } from "./state";
 
 export function App() {
@@ -10,14 +10,14 @@ export function App() {
   return (
     <div class="app">
       <header class="top">
-        <h1>Идеи</h1>
+        <h1>{tab.value === "new" ? "Новая карточка" : "История"}</h1>
         <span class="ver">v{__APP_VERSION__}</span>
       </header>
 
       {/* Оба экрана всегда в DOM: переключение вкладки не должно обрывать идущую запись. */}
       <main class="main">
-        <div class={tab.value === "record" ? "pane" : "pane hidden"}>
-          <RecordScreen />
+        <div class={tab.value === "new" ? "pane" : "pane hidden"}>
+          <NewCardScreen />
         </div>
         <div class={tab.value === "history" ? "pane" : "pane hidden"}>
           {ready.value ? <HistoryScreen /> : <div class="empty">Загрузка…</div>}
@@ -25,9 +25,9 @@ export function App() {
       </main>
 
       <nav class="tabs">
-        <button class={tab.value === "record" ? "on" : ""} onClick={() => (tab.value = "record")}>
-          <Icon name="mic" />
-          <span>Запись</span>
+        <button class={tab.value === "new" ? "on" : ""} onClick={() => (tab.value = "new")}>
+          <Icon name="plus" />
+          <span>Карточка</span>
         </button>
         <button class={tab.value === "history" ? "on" : ""} onClick={() => (tab.value = "history")}>
           <Icon name="history" />

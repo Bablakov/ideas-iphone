@@ -1,8 +1,8 @@
 import { signal } from "@preact/signals";
 
-export type Tab = "record" | "history";
+export type Tab = "new" | "history";
 
-export const tab = signal<Tab>("record");
+export const tab = signal<Tab>("new");
 
 /** id записи, открытой в карточке; null — карточка закрыта. */
 export const openId = signal<string | null>(null);

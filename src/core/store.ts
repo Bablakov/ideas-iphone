@@ -1,12 +1,14 @@
 import { signal } from "@preact/signals";
 import { db } from "./db";
-import type { Idea, NewIdea } from "./types";
+import type { Idea, MediaInfo, MediaKind, NewIdea } from "./types";
 
 /** Все записи, от новых к старым. */
 export const ideas = signal<Idea[]>([]);
 export const ready = signal(false);
 
 const byNewest = (a: Idea, b: Idea) => b.created - a.created;
+
+const mediaKey = (id: string, kind: MediaKind) => `${id}:${kind}`;
 
 function newId(): string {
   return crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -18,25 +20,30 @@ export async function initStore(): Promise<void> {
   ready.value = true;
 }
 
-/** Сохраняет идею (и файл, если есть) одной транзакцией — либо всё, либо ничего. */
-export async function addIdea(input: NewIdea, media?: Blob): Promise<Idea> {
+function info(blob: Blob, duration: number): MediaInfo {
+  return { mime: blob.type, size: blob.size, duration };
+}
+
+/** Сохраняет карточку (и файлы, если есть) одной транзакцией — либо всё, либо ничего. */
+export async function addIdea(input: NewIdea): Promise<Idea> {
   const idea: Idea = {
     id: newId(),
     created: Date.now(),
-    kind: input.kind,
     text: input.text.trim(),
     sourceUrl: input.sourceUrl.trim(),
     status: "new",
-    mediaMime: media?.type ?? "",
-    mediaSize: media?.size ?? 0,
-    duration: input.duration ?? 0,
     synced: false,
   };
+  if (input.audio) idea.audio = info(input.audio.blob, input.audio.duration);
+  if (input.video) idea.video = info(input.video.blob, input.video.duration ?? 0);
+
   const d = await db();
   const tx = d.transaction(["ideas", "media"], "readwrite");
+  const media = tx.objectStore("media");
   await Promise.all([
     tx.objectStore("ideas").put(idea),
-    media ? tx.objectStore("media").put(media, idea.id) : Promise.resolve(),
+    input.audio ? media.put(input.audio.blob, mediaKey(idea.id, "audio")) : Promise.resolve(),
+    input.video ? media.put(input.video.blob, mediaKey(idea.id, "video")) : Promise.resolve(),
     tx.done,
   ]);
   ideas.value = [idea, ...ideas.value].sort(byNewest);
@@ -57,13 +64,20 @@ export async function updateIdea(
   ideas.value = ideas.value.map((i) => (i.id === id ? next : i));
 }
 
+/** Удаление насквозь вместе с файлами. Для «убрать, но сохранить» есть статус archived. */
 export async function removeIdea(id: string): Promise<void> {
   const d = await db();
   const tx = d.transaction(["ideas", "media"], "readwrite");
-  await Promise.all([tx.objectStore("ideas").delete(id), tx.objectStore("media").delete(id), tx.done]);
+  const media = tx.objectStore("media");
+  await Promise.all([
+    tx.objectStore("ideas").delete(id),
+    media.delete(mediaKey(id, "audio")),
+    media.delete(mediaKey(id, "video")),
+    tx.done,
+  ]);
   ideas.value = ideas.value.filter((i) => i.id !== id);
 }
 
-export async function getMedia(id: string): Promise<Blob | undefined> {
-  return (await db()).get("media", id);
+export async function getMedia(id: string, kind: MediaKind): Promise<Blob | undefined> {
+  return (await db()).get("media", mediaKey(id, kind));
 }

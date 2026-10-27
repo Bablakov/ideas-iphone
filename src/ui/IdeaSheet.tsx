@@ -1,41 +1,38 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { formatDuration, formatSize, formatTime, dayKey, dayLabel } from "../core/format";
+import { dayKey, dayLabel, formatDuration, formatSize, formatTime } from "../core/format";
 import { getMedia, ideas, removeIdea, updateIdea } from "../core/store";
-import type { Idea } from "../core/types";
+import type { Idea, IdeaStatus } from "../core/types";
+import { BlobMedia } from "./BlobMedia";
 import { Icon } from "./Icon";
 import { openId, toast } from "./state";
-
-const KIND_NAME: Record<Idea["kind"], string> = { audio: "Голос", video: "Видео", text: "Заметка" };
 
 const isWebLink = (s: string) => /^https?:\/\//i.test(s.trim());
 
 function SheetBody({ idea }: { idea: Idea }) {
-  const [mediaUrl, setMediaUrl] = useState("");
+  const [audio, setAudio] = useState<Blob>();
+  const [video, setVideo] = useState<Blob>();
   const [text, setText] = useState(idea.text);
+  const [linkOn, setLinkOn] = useState(idea.sourceUrl !== "");
   const [link, setLink] = useState(idea.sourceUrl);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
-    if (idea.kind === "text") return;
-    let objectUrl = "";
     let dead = false;
-    void getMedia(idea.id).then((blob) => {
-      if (!blob || dead) return;
-      objectUrl = URL.createObjectURL(blob);
-      setMediaUrl(objectUrl);
-    });
+    if (idea.audio) void getMedia(idea.id, "audio").then((b) => !dead && setAudio(b));
+    if (idea.video) void getMedia(idea.id, "video").then((b) => !dead && setVideo(b));
     return () => {
       dead = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [idea.id, idea.kind]);
+  }, [idea.id, idea.audio, idea.video]);
 
   useEffect(() => () => clearTimeout(confirmTimer.current), []);
 
+  const currentLink = linkOn ? link.trim() : "";
+
   async function persist(): Promise<void> {
-    if (text.trim() !== idea.text || link.trim() !== idea.sourceUrl) {
-      await updateIdea(idea.id, { text, sourceUrl: link });
+    if (text.trim() !== idea.text || currentLink !== idea.sourceUrl) {
+      await updateIdea(idea.id, { text, sourceUrl: currentLink });
     }
   }
 
@@ -44,13 +41,9 @@ function SheetBody({ idea }: { idea: Idea }) {
     openId.value = null;
   }
 
-  async function toggleStatus() {
-    await updateIdea(idea.id, {
-      text,
-      sourceUrl: link,
-      status: idea.status === "new" ? "processed" : "new",
-    });
-    toast(idea.status === "new" ? "Помечено обработанной" : "Возвращено в необработанные");
+  async function setStatus(status: IdeaStatus, message: string) {
+    await updateIdea(idea.id, { text, sourceUrl: currentLink, status });
+    toast(message);
   }
 
   async function onDelete() {
@@ -61,26 +54,33 @@ function SheetBody({ idea }: { idea: Idea }) {
     }
     await removeIdea(idea.id);
     openId.value = null;
-    toast("Удалено");
+    toast("Удалено навсегда");
   }
 
-  const when = `${dayLabel(dayKey(idea.created))}, ${formatTime(idea.created)}`;
-  const meta = [KIND_NAME[idea.kind], when];
-  if (idea.kind !== "text") meta.push(formatSize(idea.mediaSize));
-  if (idea.kind === "audio" && idea.duration > 0) meta.push(formatDuration(idea.duration));
+  const meta = [`${dayLabel(dayKey(idea.created))}, ${formatTime(idea.created)}`];
+  if (idea.audio) meta.push(`аудио ${formatDuration(idea.audio.duration)}`);
+  if (idea.video) meta.push(`видео ${formatSize(idea.video.size)}`);
+
+  const statusName: Record<IdeaStatus, string> = {
+    new: "Необработанная",
+    processed: "Обработана",
+    archived: "В архиве",
+  };
 
   return (
     <div class="sheet-back" onClick={close}>
       <div class="sheet" onClick={(e) => e.stopPropagation()}>
         <div class="sheet-head">
-          <span class="sheet-meta">{meta.join(" · ")}</span>
+          <span class="sheet-meta">
+            {statusName[idea.status]} · {meta.join(" · ")}
+          </span>
           <button class="link" onClick={close}>
             Готово
           </button>
         </div>
 
-        {idea.kind === "audio" && mediaUrl && <audio controls src={mediaUrl} preload="metadata" />}
-        {idea.kind === "video" && mediaUrl && <video controls playsInline src={mediaUrl} preload="metadata" />}
+        {audio && <BlobMedia blob={audio} kind="audio" />}
+        {video && <BlobMedia blob={video} kind="video" />}
 
         <textarea
           rows={6}
@@ -89,30 +89,61 @@ function SheetBody({ idea }: { idea: Idea }) {
           onInput={(e) => setText((e.currentTarget as HTMLTextAreaElement).value)}
           onBlur={persist}
         />
-        <div class="link-row">
+        <label class="check">
           <input
-            type="url"
-            inputMode="url"
-            placeholder="Ссылка на видео"
-            value={link}
-            onInput={(e) => setLink((e.currentTarget as HTMLInputElement).value)}
-            onBlur={persist}
+            type="checkbox"
+            checked={linkOn}
+            onChange={(e) => {
+              setLinkOn((e.currentTarget as HTMLInputElement).checked);
+              // Состояние обновится после рендера, поэтому сохраняем на следующем тике.
+              setTimeout(() => void persist(), 0);
+            }}
           />
-          {isWebLink(link) && (
-            <a class="link" href={link.trim()} target="_blank" rel="noopener noreferrer">
-              Открыть
-            </a>
-          )}
-        </div>
+          <span>Ссылка на видео</span>
+        </label>
+        {linkOn && (
+          <div class="link-row">
+            <input
+              type="url"
+              inputMode="url"
+              placeholder="https://…"
+              value={link}
+              onInput={(e) => setLink((e.currentTarget as HTMLInputElement).value)}
+              onBlur={persist}
+            />
+            {isWebLink(link) && (
+              <a class="link" href={link.trim()} target="_blank" rel="noopener noreferrer">
+                Открыть
+              </a>
+            )}
+          </div>
+        )}
 
         <div class="actions">
-          <button class="primary" onClick={toggleStatus}>
-            <Icon name="check" size={18} />
-            {idea.status === "new" ? "Обработана" : "Вернуть в необработанные"}
-          </button>
+          {idea.status === "new" && (
+            <button class="primary" onClick={() => setStatus("processed", "Помечено обработанной")}>
+              <Icon name="check" size={18} />
+              Обработана
+            </button>
+          )}
+          {idea.status === "processed" && (
+            <button class="primary" onClick={() => setStatus("new", "Возвращено в необработанные")}>
+              Вернуть в необработанные
+            </button>
+          )}
+          {idea.status === "archived" && (
+            <button class="primary" onClick={() => setStatus("new", "Достана из архива")}>
+              Достать из архива
+            </button>
+          )}
+          {idea.status !== "archived" && (
+            <button class="secondary" onClick={() => setStatus("archived", "Отправлено в архив")}>
+              <Icon name="archive" size={18} />В архив
+            </button>
+          )}
           <button class={`danger${confirmDelete ? " armed" : ""}`} onClick={onDelete}>
             <Icon name="trash" size={18} />
-            {confirmDelete ? "Точно удалить?" : "Удалить"}
+            {confirmDelete ? "Точно удалить навсегда?" : "Удалить навсегда"}
           </button>
         </div>
       </div>

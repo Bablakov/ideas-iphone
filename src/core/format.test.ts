@@ -5,10 +5,7 @@ import type { Idea } from "./types";
 const at = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).getTime();
 
 function idea(id: string, created: number, patch: Partial<Idea> = {}): Idea {
-  return {
-    id, created, kind: "text", text: "", sourceUrl: "", status: "new",
-    mediaMime: "", mediaSize: 0, duration: 0, synced: false, ...patch,
-  };
+  return { id, created, text: "", sourceUrl: "", status: "new", synced: false, ...patch };
 }
 
 describe("dayLabel", () => {
@@ -50,22 +47,34 @@ describe("applyFilter", () => {
     idea("a", at(2026, 10, 27), { status: "new" }),
     idea("b", at(2026, 10, 27), { status: "processed" }),
     idea("c", at(2026, 10, 26), { status: "new" }),
+    idea("d", at(2026, 10, 25), { status: "archived" }),
   ];
-  it("по статусу", () => {
-    expect(applyFilter(list, "new").map((i) => i.id)).toEqual(["a", "c"]);
-    expect(applyFilter(list, "processed").map((i) => i.id)).toEqual(["b"]);
-    expect(applyFilter(list, "all")).toHaveLength(3);
+  const ids = (l: Idea[]) => l.map((i) => i.id);
+
+  it("«все» не показывает архив, а «архив» показывает только его", () => {
+    expect(ids(applyFilter(list, "all"))).toEqual(["a", "b", "c"]);
+    expect(ids(applyFilter(list, "archived"))).toEqual(["d"]);
   });
-  it("по дню", () => {
-    expect(applyFilter(list, "all", "2026-10-26").map((i) => i.id)).toEqual(["c"]);
-    expect(applyFilter(list, "new", "2026-10-27").map((i) => i.id)).toEqual(["a"]);
+  it("по статусу", () => {
+    expect(ids(applyFilter(list, "new"))).toEqual(["a", "c"]);
+    expect(ids(applyFilter(list, "processed"))).toEqual(["b"]);
+  });
+  it("по одному дню и по диапазону включительно", () => {
+    expect(ids(applyFilter(list, "all", "2026-10-26", "2026-10-26"))).toEqual(["c"]);
+    expect(ids(applyFilter(list, "all", "2026-10-26", "2026-10-27"))).toEqual(["a", "b", "c"]);
+    expect(ids(applyFilter(list, "archived", "2026-10-26", ""))).toEqual([]);
+  });
+  it("перепутанные границы меняются местами", () => {
+    expect(ids(applyFilter(list, "all", "2026-10-27", "2026-10-26"))).toEqual(["a", "b", "c"]);
   });
 });
 
 describe("ideaTitle", () => {
-  it("первая строка текста либо тип", () => {
+  it("первая строка текста либо вложение", () => {
     expect(ideaTitle(idea("a", 0, { text: "Идея\nвторая строка" }))).toBe("Идея");
-    expect(ideaTitle(idea("a", 0, { kind: "audio", duration: 42 }))).toBe("Голосовая заметка 0:42");
-    expect(ideaTitle(idea("a", 0, { kind: "video" }))).toBe("Видео");
+    expect(ideaTitle(idea("a", 0, { audio: { mime: "audio/mp4", size: 1, duration: 42 } }))).toBe("Голос 0:42");
+    expect(ideaTitle(idea("a", 0, { video: { mime: "video/mp4", size: 1, duration: 0 } }))).toBe("Видео");
+    expect(ideaTitle(idea("a", 0, { sourceUrl: "https://x.y" }))).toBe("https://x.y");
+    expect(ideaTitle(idea("a", 0))).toBe("Пустая карточка");
   });
 });
